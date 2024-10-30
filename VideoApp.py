@@ -2,6 +2,7 @@ import sys
 
 import cv2
 import numpy as np
+from typing import List
 
 from PySide6.QtCore import Signal, Slot, Qt, QThread
 from PySide6.QtWidgets import QMainWindow
@@ -40,7 +41,7 @@ class VideoThread(QThread):
         self.wait()
 
     @Slot(int)
-    def camera_select(self, camera):
+    def camera_select(self, camera: int):
         self.camera = camera
         self._change_flag = True
 
@@ -57,19 +58,25 @@ class PlasmaDiagnosticsApp(QMainWindow):
         # start the thread
         self.thread.start()
 
-        self.cameras = QMediaDevices.videoInputs()
+        self.cameras = QMediaDevices(self)
+        self.cameras.videoInputsChanged.connect(self.update_cams)
         self.ui.cams_selector.currentIndexChanged.connect(self.thread.camera_select)
-        self.ui.cams_selector.addItems(map(lambda c: c.description(), self.cameras))
+        self.update_cams()
 
     def closeEvent(self, event):
         self.thread.stop()
         event.accept()
 
     @Slot(np.ndarray)
-    def update_image(self, cv_img):
+    def update_image(self, cv_img: np.ndarray):
         """Updates the image_label with a new opencv image"""
         qt_img = self.convert_cv_qt(cv_img)
         self.ui.image_label.setPixmap(qt_img)
+
+    @Slot()
+    def update_cams(self):
+        self.ui.cams_selector.clear()
+        self.ui.cams_selector.addItems(map(lambda c: c.description(), self.cameras.videoInputs()))
 
     def convert_cv_qt(self, cv_img):
         """Convert from an opencv image to QPixmap"""
