@@ -10,16 +10,18 @@ from PySide6.QtGui import QPixmap, QImage
 from PySide6.QtMultimedia import QMediaDevices
 
 from VideoApp_ui import Ui_MainWindow
+from PlasmaDetector import PlasmaDetector
 
 
 class VideoThread(QThread):
     change_pixmap_signal = Signal(np.ndarray)
 
-    def __init__(self, camera):
+    def __init__(self, camera, detector: PlasmaDetector):
         super().__init__()
         self._run_flag = True
         self._change_flag = False
         self.camera = camera
+        self.detector = detector
 
     def run(self):
         # capture from web cam
@@ -31,7 +33,8 @@ class VideoThread(QThread):
                 self._change_flag = False
             ret, cv_img = cap.read()
             if ret:
-                self.change_pixmap_signal.emit(cv_img)
+                annot_img = self.detector.predict(cv_img)
+                self.change_pixmap_signal.emit(annot_img)
         # shut down capture system
         cap.release()
 
@@ -52,7 +55,9 @@ class PlasmaDiagnosticsApp(QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
 
-        self.thread = VideoThread(0)
+        self.detector = PlasmaDetector("./runs/detect/train/weights/best.pt")
+
+        self.thread = VideoThread(0, self.detector)
         # connect its signal to the update_image slot
         self.thread.change_pixmap_signal.connect(self.update_image)
         # start the thread
@@ -60,7 +65,8 @@ class PlasmaDiagnosticsApp(QMainWindow):
 
         self.cameras = QMediaDevices(self)
         self.cameras.videoInputsChanged.connect(self.update_cams)
-        self.ui.cams_selector.currentIndexChanged.connect(self.thread.camera_select)
+        self.ui.cams_selector.currentIndexChanged.connect(
+            self.thread.camera_select)
         self.update_cams()
 
     def closeEvent(self, event):
@@ -76,7 +82,8 @@ class PlasmaDiagnosticsApp(QMainWindow):
     @Slot()
     def update_cams(self):
         self.ui.cams_selector.clear()
-        self.ui.cams_selector.addItems(map(lambda c: c.description(), self.cameras.videoInputs()))
+        self.ui.cams_selector.addItems(
+            map(lambda c: c.description(), self.cameras.videoInputs()))
 
     def convert_cv_qt(self, cv_img):
         """Convert from an opencv image to QPixmap"""
